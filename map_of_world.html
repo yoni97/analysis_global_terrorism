@@ -1,0 +1,75 @@
+import pandas as pd
+import folium
+from folium.plugins import MarkerCluster
+
+def get_terror_incidents_change(show_top_5=True):
+    try:
+        # שליפת הנתונים ממסד הנתונים
+        results = list(terrorism_actions.find({}))
+
+        # יצירת DataFrame מתוך התוצאות
+        df = pd.DataFrame(results)
+
+        # הדפסת את כל השדות והנתונים הנמצאים ב-DataFrame
+        print("Columns in the DataFrame:", df.columns)
+        print("First few rows of data:", df.head())
+
+        # המרת שנת האירוע לפורמט מספרי עם טיפול בערכים לא תקינים
+        df['year'] = pd.to_numeric(df['year'], errors='coerce')
+
+        # המרת ערכים גיאוגרפיים לפורמט מספרי עם טיפול בערכים לא תקינים
+        df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
+        df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
+
+        # הסרת שורות עם ערכים חסרים בשדות קריטיים (latitude, longitude, year)
+        df = df.dropna(subset=['year', 'latitude', 'longitude'])
+
+        # חישוב מספר הפיגועים לפי אזור ושנה
+        incident_counts = df.groupby(['region', 'year']).size().reset_index(name='incident_count')
+
+        # חישוב אחוז שינוי במספר הפיגועים בין השנים לפי אזור
+        incident_counts['prev_incident_count'] = incident_counts.groupby('region')['incident_count'].shift(1)
+        incident_counts['percentage_change'] = (
+            (incident_counts['incident_count'] - incident_counts['prev_incident_count']) / incident_counts['prev_incident_count']
+        ) * 100
+
+        # הסרת שורות עם ערכים חסרים
+        incident_counts = incident_counts.dropna(subset=['percentage_change'])
+
+        # הוספת את ה- latitude וה- longitude עבור כל אזור ושנה
+        incident_counts = pd.merge(incident_counts, df[['region', 'year', 'latitude', 'longitude']], on=['region', 'year'], how='left')
+
+        # סינון לפי Top-5 אם נדרש
+        if show_top_5:
+            top_5 = incident_counts.groupby('region')['percentage_change'].mean().nlargest(5).index
+            incident_counts = incident_counts[incident_counts['region'].isin(top_5)]
+
+        # חישוב המידע הסופי
+        result = incident_counts[['region', 'year', 'percentage_change', 'latitude', 'longitude']].to_dict(orient='records')
+
+        # יצירת מפה עם Folium
+        map_center = [df['latitude'].mean(), df['longitude'].mean()]
+        folium_map = folium.Map(location=map_center, zoom_start=2)
+
+        # Marker Cluster for better visualization
+        marker_cluster = MarkerCluster().add_to(folium_map)
+
+        # יצירת נקודות מפה עבור כל אזור
+        for _, row in incident_counts.iterrows():
+            folium.CircleMarker(
+                location=[row['latitude'], row['longitude']],
+                radius=row['percentage_change'] / 10,  # גודל הנקודה מבוסס על אחוז השינוי
+                color='red' if row['percentage_change'] > 50 else 'blue',
+                fill=True,
+                fill_color='orange' if row['percentage_change'] > 50 else 'lightblue',
+                fill_opacity=0.6,
+                popup=f"Region: {row['region']}<br>Change: {row['percentage_change']}%"
+            ).add_to(marker_cluster)
+
+        # שמירת המפה כקובץ HTML להצגה
+        folium_map.save('terror_incidents_change_map.html')
+
+        return result
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
