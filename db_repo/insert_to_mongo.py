@@ -1,11 +1,15 @@
 import csv
 from configs.mongodb import terrorism_actions
 
-def read_csv(csv_path):
-   with open(csv_path, 'r') as file:
-       csv_reader = csv.DictReader(file)
-       for row in csv_reader:
-           yield row
+import csv
+
+def read_csv(file_path):
+    with open(file_path, mode='r', encoding='utf-8') as file:
+        csv_reader = csv.DictReader(file)  # שימוש ב-DictReader להמיר שורות למילונים
+        for row in csv_reader:
+            yield row
+
+
 
 def init_car_accidents_big_data():
    terrorism_actions.drop()
@@ -19,9 +23,10 @@ def init_car_accidents_big_data():
            'eventid': row['eventid'], 'year': row['Year'], 'month': row['Month'], 'day': row['Day'],
            'country': row['Country'], 'region': row['Region'], 'state': row['state'], 'city': row['city'],
            'latitude': row['latitude'], 'longitude': row['longitude'], 'AttackType': row['AttackType'],
-           'killed': row['Killed'], 'wounded': row['Wounded'], 'target': row['Target'], 'summary': row['Summary'],
-           'Group': row['Group'],'success': row['success'], 'target_type': row['Target_type'],
-           'weapon_type': row['Weapon_type'], 'nperps': row['nperps'], 'date': row['Date'],
+           'Group': row['Group'],'killed': row['Killed'], 'wounded': row['Wounded'], 'target': row['Target'],
+           'summary': row['Summary'], 'success': row['success'], 'target_type': row['Target_type'],
+           'total_wounded_score': row['severity'],'weapon_type': row['Weapon_type'],
+           'nperps': row['nperps'], 'date': row['Date'],
        }
        terror_list.append(new_terror)
 

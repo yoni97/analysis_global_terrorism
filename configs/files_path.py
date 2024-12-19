@@ -1,4 +1,2 @@
-csv_profile_path = './data_files/students_profiles.csv'
-csv_lifestyle_path = './data_files/student_lifestyle.csv'
-csv_performance_path = './data_files/student_course_performance.csv'
-csv_reviews_path = './data_files/reviews_with_students.csv'
+csv_profile_path = '../csv_files/globalterrorismdb.csv'
+csv_performance_path = '../csv_files/Worldwide_Terrorism_Incidents_5000.csv'
