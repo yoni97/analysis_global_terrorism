@@ -36,5 +36,9 @@ def init_car_accidents_big_data():
    except Exception as e:
        print(f"Error inserting new_terror: {e}")
 
+   terrorism_actions.create_index('region')
+   # terrorism_actions.create_index('region')
+
+
 if __name__ == '__main__':
     init_car_accidents_big_data()
