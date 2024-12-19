@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey
 from sqlalchemy.orm import relationship
-
 from base.base import Base
 
 
@@ -16,15 +15,14 @@ class Event(Base):
     longitude = Column(Float)
     summary = Column(String)
     team = Column(Integer)
+    nperps = Column(Integer)
+    date = Column(Date)
 
 
 class TerroristGroup(Base):
     __tablename__ = 'terrorist_groups'
     group_id = Column(Integer, primary_key=True)
     group_name = Column(String, nullable=False)
-    country = Column(String)
-    region = Column(String)
-    attack_type = Column(String)
 
 class GroupTargetRelation(Base):
     __tablename__ = 'group_target_relations'
