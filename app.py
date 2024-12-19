@@ -1,15 +1,18 @@
 from flask import Flask
 
-from configs.postgres_url import connection_url
+from configs.database_url import DATABASE_URL
+from routes.analysis_terror_route import analysis_terror_bp
 
 app = Flask(__name__)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = connection_url
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+app.register_blueprint(analysis_terror_bp)
 
 @app.route('/')
 def hello_world():  # put application's code here
-    return 'Hello World!'
+    return 'Welcome to Global Terrorism!'
 
 
 if __name__ == '__main__':
