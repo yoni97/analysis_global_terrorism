@@ -27,7 +27,7 @@ def init_car_accidents_big_data():
        terror_list.append(new_terror)
 
    try:
-       terror_id = terrorism_actions.insert_many(terror_list)
+       terrorism_actions.insert_many(terror_list)
        print('data inserted successfully')
    except Exception as e:
        print(f"Error inserting new_terror: {e}")
