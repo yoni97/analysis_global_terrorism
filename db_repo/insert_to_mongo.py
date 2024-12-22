@@ -1,15 +1,11 @@
 import csv
 from configs.mongodb import terrorism_actions
 
-import csv
-
 def read_csv(file_path):
     with open(file_path, mode='r', encoding='utf-8') as file:
-        csv_reader = csv.DictReader(file)  # שימוש ב-DictReader להמיר שורות למילונים
+        csv_reader = csv.DictReader(file)
         for row in csv_reader:
             yield row
-
-
 
 def init_car_accidents_big_data():
    terrorism_actions.drop()
@@ -37,7 +33,7 @@ def init_car_accidents_big_data():
        print(f"Error inserting new_terror: {e}")
 
    terrorism_actions.create_index('region')
-   # terrorism_actions.create_index('region')
+   terrorism_actions.create_index('country')
 
 
 if __name__ == '__main__':
