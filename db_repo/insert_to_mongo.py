@@ -1,5 +1,6 @@
 import csv
 from datetime import datetime
+from configs.database_url import DATA_PATH
 from configs.mongodb import terrorism_actions
 
 def read_csv(file_path):
@@ -19,13 +20,12 @@ def create_terror_actions_collection(df):
    print('table dropped successfully')
    terror_list = []
 
-   for row in read_csv('../pandas_analytics/normalized_data.csv'):
+   for row in read_csv(DATA_PATH):
 
        new_terror = {
            'eventid': row.get('eventid', None),
            'year': row.get('Year', None),
            'month': row.get('Month', None),
-           'day': row.get('Day', None),
            'country': row.get('Country', None),
            'region': row.get('Region', None),
            'city': row.get('city', None),
@@ -38,7 +38,6 @@ def create_terror_actions_collection(df):
            'wounded': row.get('Wounded', None),
            'target': row.get('Target', None),
            'summary': row.get('Summary', None),
-           'success': row.get('success', None),
            'target_type': row.get('Target_type', None),
            'total_wounded_score': row.get('severity', None),
            'weapon_type': row.get('Weapon_type', None),
