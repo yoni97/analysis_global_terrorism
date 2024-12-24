@@ -30,8 +30,8 @@ def fetch_news():
     response = requests.post(NEWS_API_URL, json=payload)
     if response.status_code == 200:
         try:
-            data = response.json()  # ניסיון לחלץ את ה-JSON
-            print(json.dumps(data, indent=4))  # הדפסת התגובה בצורה נוחה לקריאה
+            data = response.json()
+            print(json.dumps(data, indent=4))
             ARTICLES_PAGE += 1
             return data.get("articles", {}).get("results", [])
         except ValueError as e:
