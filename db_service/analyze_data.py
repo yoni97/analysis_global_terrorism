@@ -4,8 +4,10 @@ import folium
 from flask import render_template
 from folium.plugins import MarkerCluster
 from bson import ObjectId
+from configs.database_url import DATA_PATH
 from configs.mongodb import terrorism_actions
 from db_repo.upload_to_pandas import upload_to_pandas
+from db_service.calculation_services import create_map_and_marker
 
 
 def convert_objectid(data):
@@ -22,7 +24,7 @@ def convert_objectid(data):
 #   1: Question 1:
 def get_top_attack_types(top_n=50):
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
         df['killed'] = pd.to_numeric(df['killed'], errors='coerce').fillna(0)
         df['wounded'] = pd.to_numeric(df['wounded'], errors='coerce').fillna(0)
         df['total_wounded_score'] = df['killed'] * 2 + df['wounded'] * 1
@@ -40,7 +42,7 @@ def get_top_attack_types(top_n=50):
 #   2:  Question 2:
 def get_average_wounded_by_region(show_top_5=False):
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
         for col in ['killed', 'wounded', 'latitude', 'longitude']:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -59,11 +61,7 @@ def get_average_wounded_by_region(show_top_5=False):
 
         if show_top_5:
             region_stats = region_stats.nlargest(5, 'total_wounded_score')
-
-        map_center = [df['latitude'].mean(), df['longitude'].mean()]
-        folium_map = folium.Map(location=map_center, zoom_start=2)
-
-        marker_cluster = MarkerCluster().add_to(folium_map)
+        marker_cluster, folium_map = create_map_and_marker(df)
 
         def add_marker(row):
             folium.CircleMarker(
@@ -73,7 +71,7 @@ def get_average_wounded_by_region(show_top_5=False):
                 fill=True,
                 fill_color='orange' if row['total_wounded_score'] > 50 else 'lightblue',
                 fill_opacity=0.6,
-                popup=f"Region: {row['region']}<br>Score: {row['total_wounded_score']}"
+                popup=f"City: {row['city']}<br>Score: {row['total_wounded_score']}"
             ).add_to(marker_cluster)
 
         df.apply(add_marker, axis=1)
@@ -82,12 +80,12 @@ def get_average_wounded_by_region(show_top_5=False):
         results = region_stats[['region', 'total_wounded_score', 'percentage_wounded']].to_dict(orient='records')
         return {
             "status": "success",
-            "data": results,  # נתוני אזורים
-            "map_url": "/static/wounded_by_region_map.html"  # קישור למפה
+            "data": results,
+            "map_url": "/static/wounded_by_region_map.html"
         }
 
     except Exception as e:
-        logging.error(f"Error in get_average_wounded_by_region: {str(e)}")  # הוספת לוג של השגיאה
+        logging.error(f"Error in get_average_wounded_by_region: {str(e)}")
         return {"status": "error", "message": str(e)}
 
 # def get_average_wounded_by_region(show_top_5=False):
@@ -235,7 +233,7 @@ def get_average_wounded_by_region(show_top_5=False):
 #   3: Question 3:
 def get_top_groups_by_victims(top_n=5):
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
         df['killed'] = pd.to_numeric(df['killed'], errors='coerce').fillna(0)
         df['wounded'] = pd.to_numeric(df['wounded'], errors='coerce').fillna(0)
@@ -254,8 +252,7 @@ def get_top_groups_by_victims(top_n=5):
 #   4: Question 6:
 def get_terror_incidents_change(show_top_5=True):
     try:
-        results = list(terrorism_actions.find({}))
-        df = pd.DataFrame(results)
+        df = upload_to_pandas(terrorism_actions)
         df['year'] = pd.to_numeric(df['year'], errors='coerce')
         df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
         df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
@@ -269,7 +266,6 @@ def get_terror_incidents_change(show_top_5=True):
         ) * 100
 
         incident_counts = incident_counts.dropna(subset=['percentage_change'])
-
         incident_counts = pd.merge(incident_counts, df[['region', 'year', 'latitude', 'longitude']], on=['region', 'year'], how='left')
 
         if show_top_5:
@@ -278,10 +274,7 @@ def get_terror_incidents_change(show_top_5=True):
 
         result = incident_counts[['region', 'year', 'percentage_change', 'latitude', 'longitude']].to_dict(orient='records')
 
-        map_center = [df['latitude'].mean(), df['longitude'].mean()]
-        folium_map = folium.Map(location=map_center, zoom_start=2)
-
-        marker_cluster = MarkerCluster().add_to(folium_map)
+        marker_cluster, folium_map = create_map_and_marker(df)
 
         for _, row in incident_counts.iterrows():
             folium.CircleMarker(
@@ -302,10 +295,8 @@ def get_terror_incidents_change(show_top_5=True):
 #   5: Question 8:
 def get_top_active_groups(filter_by='region', filter_value=None, top_n=5):
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
-        print("Columns in the DataFrame:", df.columns)
-        print("First few rows of data:", df.head())
         df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
         df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
         df = df.dropna(subset=['latitude', 'longitude', 'region', 'Group'])
@@ -323,10 +314,7 @@ def get_top_active_groups(filter_by='region', filter_value=None, top_n=5):
             lambda x: x.nlargest(1, 'event_count')
         ).reset_index(drop=True)
 
-        map_center = [df['latitude'].mean(), df['longitude'].mean()]
-        folium_map = folium.Map(location=map_center, zoom_start=2)
-
-        marker_cluster = MarkerCluster().add_to(folium_map)
+        marker_cluster, folium_map = create_map_and_marker(df)
 
         for region, group in most_active_group.iterrows():
             region_data = top_groups_by_region[top_groups_by_region[filter_by] == group[filter_by]]
@@ -358,7 +346,7 @@ def get_top_active_groups(filter_by='region', filter_value=None, top_n=5):
 #   1: Question 11:
 def get_groups_with_common_targets(filter_by='region', filter_value=None):
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
         print("Columns in the DataFrame:", df.columns)
         print("First few rows of data:", df.head())
@@ -379,11 +367,7 @@ def get_groups_with_common_targets(filter_by='region', filter_value=None):
 
         top_targets = grouped[grouped['num_groups'] == grouped['num_groups'].max()]
 
-        map_center = [df['latitude'].mean(), df['longitude'].mean()]
-        folium_map = folium.Map(location=map_center, zoom_start=2)
-
-        marker_cluster = MarkerCluster().add_to(folium_map)
-
+        marker_cluster, folium_map = create_map_and_marker(df)
         for _, row in grouped.iterrows():
             popup_text = f"""
             <b>{filter_by.capitalize()}: {row[filter_by]}</b><br>
@@ -409,8 +393,7 @@ def get_groups_with_common_targets(filter_by='region', filter_value=None):
 #   Question 12: ???
 def track_group_expansion_over_time():
     try:
-        results = list(terrorism_actions.find({}))
-        df = pd.DataFrame(results)
+        df = upload_to_pandas(terrorism_actions)
         df = df.dropna(subset=['region', 'Group', 'year'])
         df['year'] = pd.to_numeric(df['year'], errors='coerce')
 
@@ -428,7 +411,7 @@ def track_group_expansion_over_time():
 # 13???
 def find_groups_in_same_attack():
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
         if 'eventid' not in df.columns:
             raise KeyError("The column 'eventid' is missing from the dataset.")
@@ -454,7 +437,7 @@ def find_groups_in_same_attack():
 #   2: Question 14:
 def find_shared_attack_strategies(region_filter=None, country_filter=None):
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
         df = df.dropna(subset=['region', 'country', 'AttackType', 'Group', 'latitude', 'longitude'])
         df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
@@ -503,9 +486,8 @@ def find_shared_attack_strategies(region_filter=None, country_filter=None):
 #  3: Question 15:
 def find_groups_and_attack_count_by_target(region_filter=None, country_filter=None):
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
-        print(df.columns)
         df = df.dropna(subset=['region', 'country', 'AttackType', 'Group', 'target_type'])
 
         if region_filter:
@@ -525,7 +507,7 @@ def find_groups_and_attack_count_by_target(region_filter=None, country_filter=No
 #  4: Question 16:
 def find_areas_with_high_intergroup_activity(region_filter=None, country_filter=None):
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
         df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
         df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
@@ -563,7 +545,7 @@ def find_areas_with_high_intergroup_activity(region_filter=None, country_filter=
 # 5: Question 18:
 def find_influential_groups(region_filter=None, country_filter=None):
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
         df = df.dropna(subset=['region', 'country', 'target_type', 'Group', 'latitude', 'longitude'])
         df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
@@ -613,7 +595,7 @@ def find_influential_groups(region_filter=None, country_filter=None):
 #   5: Question 19:
 def find_groups_with_shared_targets_by_year():
     try:
-        df = upload_to_pandas()
+        df = upload_to_pandas(terrorism_actions)
 
         df = df.dropna(subset=['year', 'Group', 'target_type'])
         df['year'] = pd.to_numeric(df['year'], errors='coerce').astype('Int64')
