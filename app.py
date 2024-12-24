@@ -1,6 +1,7 @@
 from flask import Flask, render_template
 
 from configs.database_url import DATABASE_URL
+from db_repo.upload_to_pandas import upload_to_pandas
 from routes.analysis_terror_route import analysis_terror_bp
 
 app = Flask(__name__)
@@ -16,6 +17,7 @@ def home():
 
 
 if __name__ == '__main__':
+    upload_to_pandas()
     app.run(host='0.0.0.0',
             port=5000,
             debug=True)
