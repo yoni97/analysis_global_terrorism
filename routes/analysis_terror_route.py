@@ -55,15 +55,6 @@ def top_groups_by_victims_route():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# @analysis_terror_bp.route('/api/attack_type_target_correlation', methods=['GET'])
-# def attack_type_target_correlation_route():
-#     try:
-#         results = get_attack_type_target_correlation()
-#
-#         return jsonify({"status": "success", "data": results}), 200
-#     except Exception as e:
-#         return jsonify({"status": "error", "message": str(e)}), 500
-
 @analysis_terror_bp.route('/api/terror_incidents_change', methods=['GET'])
 def terror_incidents_change_route():
     try:
@@ -77,8 +68,8 @@ def terror_incidents_change_route():
 @analysis_terror_bp.route('/api/groups_with_common_targets', methods=['GET'])
 def groups_with_common_targets_route():
     try:
-        filter_by = request.args.get('filter_by', 'region')  # region או country
-        filter_value = request.args.get('filter_value', None)  # ערך סינון
+        filter_by = request.args.get('filter_by', 'region')
+        filter_value = request.args.get('filter_value', None)
 
         results = get_groups_with_common_targets(filter_by=filter_by, filter_value=filter_value)
 
