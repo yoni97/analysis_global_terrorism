@@ -1,7 +1,5 @@
 import pandas as pd
-
 from configs.mongodb import terrorism_actions
-
 
 def upload_to_pandas():
     try:
