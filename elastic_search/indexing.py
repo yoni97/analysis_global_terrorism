@@ -13,7 +13,7 @@ index_mappings = {
                 "country": { "type": "keyword" },
                 "region": { "type": "keyword" },
                 "city": { "type": "keyword" },
-                "date": { "type": "date", "format": "yyyy-MM-dd" },
+                "date": { "type": "keyword", "format": "yyyy-MM-dd" },
                 "latitude": { "type": "double" },
                 "longitude": { "type": "double" },
                 "AttackType": { "type": "keyword" },

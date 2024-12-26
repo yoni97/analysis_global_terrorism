@@ -33,17 +33,19 @@ def news_search():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@elastic_bp.route("/historic/search/", methods=["GET", "POST"])
+@elastic_bp.route("/historic/search/", methods=["POST"])
 def historic_search():
     keywords = request.json.get("keywords")
     limit = int(request.json.get("limit", 10))
 
     if not keywords:
         return jsonify({"error": "Missing 'keywords' parameter"}), 400
+
     query = {
         "query": {
-            "match": {
-                "_all": keywords
+            "multi_match": {
+                "query": keywords,
+                "fields": ["country", "city", "AttackType", "Summary"]
             }
         }
     }
@@ -54,8 +56,7 @@ def historic_search():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-@elastic_bp.route("/combined/search/", methods=["GET", "POST"])
+@elastic_bp.route("/combined/search/", methods=["POST"])
 def combined_search():
     keywords = request.json.get("keywords")
     limit = int(request.json.get("limit", 10))
@@ -76,6 +77,3 @@ def combined_search():
         return jsonify(res["hits"]["hits"])
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-# if __name__ == "__main__":
-#     elastic_bp.run(debug=True)

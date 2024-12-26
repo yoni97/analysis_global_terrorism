@@ -1,28 +1,16 @@
+import folium
 import logging
 import pandas as pd
-import folium
-from flask import render_template
-from folium.plugins import MarkerCluster
-from bson import ObjectId
-from configs.database_url import DATA_PATH
 from configs.mongodb import terrorism_actions
+from flask import render_template, send_file, request, jsonify
 from db_repo.upload_to_pandas import upload_to_pandas
-from db_service.calculation_services import create_map_and_marker
+from db_service.calculation_services import create_map_and_marker, calc_total_wounded
+from services.query_service import clean_filter_value
 
-
-def convert_objectid(data):
-    if isinstance(data, ObjectId):
-        return str(data)
-    elif isinstance(data, dict):
-        return {key: convert_objectid(value) for key, value in data.items()}
-    elif isinstance(data, list):
-        return [convert_objectid(item) for item in data]
-    else:
-        return data
 
 # Part A:
 #   1: Question 1:
-def get_top_attack_types(top_n=50):
+def get_top_attack_types(top_n):
     try:
         df = upload_to_pandas(terrorism_actions)
         df['killed'] = pd.to_numeric(df['killed'], errors='coerce').fillna(0)
@@ -40,7 +28,7 @@ def get_top_attack_types(top_n=50):
         return {"status": "error", "message": str(e)}
 
 #   2:  Question 2:
-def get_average_wounded_by_region(show_top_5=False):
+def get_average_wounded_by_region_event(show_top_5=False):
     try:
         df = upload_to_pandas(terrorism_actions)
 
@@ -48,10 +36,9 @@ def get_average_wounded_by_region(show_top_5=False):
             df[col] = pd.to_numeric(df[col], errors='coerce')
         df = df.dropna(subset=['killed', 'wounded', 'latitude', 'longitude', 'region'])
 
-        df['total_wounded_score'] = df['killed'] * 2 + df['wounded']
-        df['total_wounded'] = df['killed'] + df['wounded']
+        new_df = calc_total_wounded(df)
 
-        region_stats = df.groupby('region').agg(
+        region_stats = new_df.groupby('region').agg(
             total_wounded_score=('total_wounded_score', 'mean'),
             total_wounded=('total_wounded', 'sum'),
             event_count=('region', 'size')
@@ -61,7 +48,8 @@ def get_average_wounded_by_region(show_top_5=False):
 
         if show_top_5:
             region_stats = region_stats.nlargest(5, 'total_wounded_score')
-        marker_cluster, folium_map = create_map_and_marker(df)
+
+        marker_cluster, folium_map = create_map_and_marker(new_df)
 
         def add_marker(row):
             folium.CircleMarker(
@@ -74,161 +62,66 @@ def get_average_wounded_by_region(show_top_5=False):
                 popup=f"City: {row['city']}<br>Score: {row['total_wounded_score']}"
             ).add_to(marker_cluster)
 
-        df.apply(add_marker, axis=1)
-        folium_map.save('wounded_by_region_map.html')
+        new_df.apply(add_marker, axis=1)
+        map_html = folium_map._repr_html_()
 
         results = region_stats[['region', 'total_wounded_score', 'percentage_wounded']].to_dict(orient='records')
-        return {
-            "status": "success",
-            "data": results,
-            "map_url": "/static/wounded_by_region_map.html"
-        }
+        print("Results:", results)
+        return results, map_html
 
     except Exception as e:
         logging.error(f"Error in get_average_wounded_by_region: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# def get_average_wounded_by_region(show_top_5=False):
-#     try:
-#         df = upload_to_pandas()
-#
-#         for col in ['killed', 'wounded', 'latitude', 'longitude']:
-#             df[col] = pd.to_numeric(df[col], errors='coerce')
-#
-#         df = df.dropna(subset=['killed', 'wounded', 'latitude', 'longitude', 'region'])
-#
-#         df['total_wounded_score'] = df['killed'] * 2 + df['wounded']
-#         df['total_wounded'] = df['killed'] + df['wounded']
-#
-#         region_stats = df.groupby('region').agg(
-#             total_wounded_score=('total_wounded_score', 'mean'),
-#             total_wounded=('total_wounded', 'sum'),
-#             event_count=('region', 'size')
-#         ).reset_index()
-#
-#         region_stats['percentage_wounded'] = region_stats['total_wounded'] / region_stats['event_count']
-#
-#         if show_top_5:
-#             region_stats = region_stats.nlargest(5, 'total_wounded_score')
-#
-#         map_center = [df['latitude'].mean(), df['longitude'].mean()]
-#         folium_map = folium.Map(location=map_center, zoom_start=2)
-#
-#         marker_cluster = MarkerCluster().add_to(folium_map)
-#
-#         def add_marker(row):
-#             folium.CircleMarker(
-#                 location=[row['latitude'], row['longitude']],
-#                 radius=row['total_wounded_score'] / 10,
-#                 color='red' if row['total_wounded_score'] > 50 else 'blue',
-#                 fill=True,
-#                 fill_color='orange' if row['total_wounded_score'] > 50 else 'lightblue',
-#                 fill_opacity=0.6,
-#                 popup=f"Region: {row['region']}<br>Score: {row['total_wounded_score']}"
-#             ).add_to(marker_cluster)
-#
-#         df.apply(add_marker, axis=1)
-#
-#         folium_map.save('wounded_by_region_map.html')
-#
-#         results = region_stats[['region', 'total_wounded_score', 'percentage_wounded']].to_dict(orient='records')
-#         return results
-#
-#     except Exception as e:
-#         return {"status": "error", "message": str(e)}
+# 2b:
+def get_average_wounded_by_region(show_top_5=False):
+    try:
+        df = upload_to_pandas(terrorism_actions)
 
-# def get_average_wounded_by_region(show_top_5):
-#     try:
-#         df = upload_to_pandas()
-#
-#         for col in ['killed', 'wounded', 'latitude', 'longitude']:
-#             df[col] = pd.to_numeric(df[col], errors='coerce')
-#         df = df.dropna(subset=['killed', 'wounded', 'latitude', 'longitude', 'region'])
-#         df['total_wounded_score'] = df['killed'] * 2 + df['wounded']
-#         avg_wounded_by_region = df.groupby('region')['total_wounded_score'].mean().reset_index()
-#         df['total_wounded'] = df['killed'] + df['wounded']
-#         total_wounded_by_region = df.groupby('region')['total_wounded'].sum().reset_index()
-#
-#         total_events_by_region = df.groupby('region').size().reset_index(name='event_count')
-#
-#         avg_wounded_by_region = avg_wounded_by_region.merge(total_wounded_by_region, on='region')
-#         avg_wounded_by_region = avg_wounded_by_region.merge(total_events_by_region, on='region')
-#
-#         avg_wounded_by_region['percentage_wounded'] = (
-#             avg_wounded_by_region['total_wounded'] / avg_wounded_by_region['event_count']
-#         )
-#
-#         if show_top_5:
-#             avg_wounded_by_region = avg_wounded_by_region.nlargest(5, 'total_wounded_score')
-#
-#         map_center = [df['latitude'].mean(), df['longitude'].mean()]
-#         folium_map = folium.Map(location=map_center, zoom_start=2)
-#
-#         # Marker Cluster for better visualization
-#         marker_cluster = MarkerCluster().add_to(folium_map)
-#
-#         for _, row in df.iterrows():
-#             folium.CircleMarker(
-#                 location=[row['latitude'], row['longitude']],
-#                 radius=row['total_wounded_score'] / 10,
-#                 color='red' if row['total_wounded_score'] > 50 else 'blue',
-#                 fill=True,
-#                 fill_color='orange' if row['total_wounded_score'] > 50 else 'lightblue',
-#                 fill_opacity=0.6,
-#                 popup=f"Region: {row['region']}<br>Score: {row['total_wounded_score']}"
-#             ).add_to(marker_cluster)
-#
-#         folium_map.save('wounded_by_region_map.html')
-#         results = avg_wounded_by_region[['region', 'total_wounded_score', 'percentage_wounded']].to_dict(
-#             orient='records')
-#
-#         # return render_template('wounded_by_region_map.html', data=results)
-#         folium_map.save('wounded_by_region_map.html')
-#         results = avg_wounded_by_region[['region', 'total_wounded_score', 'percentage_wounded']].to_dict(
-#             orient='records'
-#         )
-#
-#         return results
-#     except Exception as e:
-#         return {"status": "error", "message": str(e)}
+        for col in ['killed', 'wounded', 'latitude', 'longitude']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        df = df.dropna(subset=['killed', 'wounded', 'latitude', 'longitude', 'region'])
 
+        df['total_wounded'] = df['killed'] + df['wounded']
 
-# def get_average_wounded_by_region(show_top_5=False):
-#     try:
-#         df = upload_to_pandas()
-#
-#         for col in ['killed', 'wounded', 'latitude', 'longitude']:
-#             df[col] = pd.to_numeric(df[col], errors='coerce')
-#
-#         df = df.dropna(subset=['killed', 'wounded', 'latitude', 'longitude', 'region'])
-#
-#         df['total_wounded_score'] = df['killed'] * 2 + df['wounded']
-#         avg_wounded_by_region = df.groupby('region')['total_wounded_score'].mean().reset_index()
-#         avg_wounded_by_region.rename(columns={'total_wounded_score': 'average_wounded_score'}, inplace=True)
-#
-#         map_center = [df['latitude'].mean(), df['longitude'].mean()]
-#         folium_map = folium.Map(location=map_center, zoom_start=2)
-#         marker_cluster = MarkerCluster().add_to(folium_map)
-#
-#         for _, row in df.iterrows():
-#             folium.CircleMarker(
-#                 location=[row['latitude'], row['longitude']],
-#                 radius=row['total_wounded_score'] / 10,
-#                 color='red' if row['total_wounded_score'] > 50 else 'blue',
-#                 fill=True,
-#                 fill_color='orange' if row['total_wounded_score'] > 50 else 'lightblue',
-#                 fill_opacity=0.6,
-#                 popup=f"Region: {row['region']}<br>Score: {row['total_wounded_score']}"
-#             ).add_to(marker_cluster)
-#
-#         folium_map.save('static/wounded_by_region_map.html')
-#         results = avg_wounded_by_region.to_dict(orient='records')
-#
-#         return render_template('wounded_by_region_map.html', data=results)
-#
-#     except Exception as e:
-#         return {"status": "error", "message": str(e)}
+        region_stats = df.groupby('region').agg(
+            avg_wounded=('total_wounded', 'mean'),
+            total_wounded=('total_wounded', 'sum'),
+            event_count=('region', 'size'),
+            latitude=('latitude', 'mean'),
+            longitude=('longitude', 'mean')
+        ).reset_index()
 
+        region_stats['percentage_wounded'] = region_stats['total_wounded'] / region_stats['event_count']
+
+        if show_top_5:
+            region_stats = region_stats.nlargest(5, 'avg_wounded')
+
+        folium_map = folium.Map(location=[df['latitude'].mean(), df['longitude'].mean()], zoom_start=2)
+
+        for _, row in region_stats.iterrows():
+            color = 'red' if row['avg_wounded'] > 7 else 'blue'
+            fill_color = 'orange' if row['avg_wounded'] > 7 else 'lightblue'
+            folium.CircleMarker(
+                location=[row['latitude'], row['longitude']],
+                radius=row['avg_wounded'],
+                color=color,
+                fill=True,
+                fill_color=fill_color,
+                fill_opacity=1,
+                popup=f"Region: {row['region']}<br>Avg Wounded: {row['avg_wounded']:.2f}<br>Total Wounded: {row['total_wounded']}<br>Percentage Wounded: {row['percentage_wounded']:.2%}"
+            ).add_to(folium_map)
+
+        folium_map.save('templates/average_wounded_by_region_map.html')
+
+        map_html = folium_map._repr_html_()
+
+        results = region_stats[['region', 'avg_wounded', 'percentage_wounded']].to_dict(orient='records')
+        return {"status": "success", "data": results, "map_html": map_html}
+
+    except Exception as e:
+        logging.error(f"Error in get_average_wounded_by_region: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 #   3: Question 3:
 def get_top_groups_by_victims(top_n=5):
@@ -286,15 +179,84 @@ def get_terror_incidents_change(show_top_5=True):
                 fill_opacity=0.6,
                 popup=f"Region: {row['region']}<br>Change: {row['percentage_change']}%"
             ).add_to(marker_cluster)
-        folium_map.save('terror_incidents_change_map.html')
-        return result
 
+        map_html = folium_map._repr_html_()
+        return result, map_html
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-#   5: Question 8:
-def get_top_active_groups(filter_by='region', filter_value=None, top_n=5):
+
+def get_terror_incidents_change1(show_top_5=True):
     try:
+        df = upload_to_pandas(terrorism_actions)
+
+        required_columns = ['year', 'latitude', 'longitude']
+        for col in required_columns:
+            if col not in df.columns:
+                raise ValueError(f"Missing required column: {col}")
+
+        df['year'] = pd.to_numeric(df['year'], errors='coerce')
+        df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
+        df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
+
+        df = df.dropna(subset=['latitude', 'longitude', 'year'])
+
+        incident_counts = df.groupby(['region', 'year']).agg(
+            incident_count=('year', 'size'),
+            avg_latitude=('latitude', 'mean'),
+            avg_longitude=('longitude', 'mean')
+        ).reset_index()
+
+        incident_counts['prev_incident_count'] = incident_counts.groupby('region')['incident_count'].shift(1)
+        incident_counts['percentage_change'] = (
+                                                       (incident_counts['incident_count'] - incident_counts[
+                                                           'prev_incident_count']) / incident_counts[
+                                                           'prev_incident_count']
+                                               ) * 100
+
+        incident_counts = incident_counts.dropna(subset=['percentage_change'])
+
+        if show_top_5:
+            top_5_regions = (
+                incident_counts.groupby('region')['percentage_change']
+                .mean()
+                .nlargest(5)
+                .index
+            )
+            incident_counts = incident_counts[incident_counts['region'].isin(top_5_regions)]
+
+        # יצירת מפה
+        folium_map = folium.Map(location=[df['latitude'].mean(), df['longitude'].mean()], zoom_start=2)
+
+        for name, group_data in incident_counts.groupby('region'):
+            region_lat = group_data['avg_latitude'].mean()
+            region_lon = group_data['avg_longitude'].mean()
+            avg_percentage_change = group_data['percentage_change'].mean()
+
+            folium.Marker(
+                location=[region_lat, region_lon],
+                popup=f"Region: {name}<br>Average Change: {avg_percentage_change:.2f}%",
+                icon=folium.Icon(color="blue", icon="info-sign")
+            ).add_to(folium_map)
+
+        folium_map.save('terror_incidents_change_map.html')
+        map_html = folium_map._repr_html_()
+
+        result = incident_counts[['region', 'year', 'percentage_change']].to_dict(orient='records')
+        print(result)
+        return result, map_html
+    except Exception as e:
+        print("Error in get_terror_incidents_change1:", str(e))
+        return {"status": "error", "message": str(e)}
+
+
+#   5: Question 8:
+def get_top_active_groups(top_n, filter_by,  filter_value=None):
+    try:
+        if filter_by:
+            filter_by = clean_filter_value(filter_by)
+        if filter_value:
+            filter_value = clean_filter_value(filter_value)
         df = upload_to_pandas(terrorism_actions)
 
         df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
@@ -316,7 +278,7 @@ def get_top_active_groups(filter_by='region', filter_value=None, top_n=5):
 
         marker_cluster, folium_map = create_map_and_marker(df)
 
-        for region, group in most_active_group.iterrows():
+        for _, group in most_active_group.iterrows():
             region_data = top_groups_by_region[top_groups_by_region[filter_by] == group[filter_by]]
 
             popup_text = f"""
@@ -331,31 +293,36 @@ def get_top_active_groups(filter_by='region', filter_value=None, top_n=5):
                 popup=popup_text
             ).add_to(marker_cluster)
 
-        folium_map.save('top_active_groups_map.html')
-
-        return {
-            "status": "success",
-            "data": top_groups_by_region.to_dict(orient='records'),
-            "most_active_group": most_active_group.to_dict(orient='records')
-        }
+        map_html = folium_map._repr_html_()
+        results = top_groups_by_region.to_dict(orient='records')
+        return results, map_html
 
     except Exception as e:
+        logging.error(f"Error in get_top_active_groups: {str(e)}")
         return {"status": "error", "message": str(e)}
 
 # Part 2:
 #   1: Question 11:
 def get_groups_with_common_targets(filter_by='region', filter_value=None):
     try:
+        if filter_by:
+            filter_by = clean_filter_value(filter_by)
+        if filter_value:
+            filter_value = clean_filter_value(filter_value)
         df = upload_to_pandas(terrorism_actions)
+        count_central = df[df['region'].str.contains("Central America", case=False, na=False)].shape[0]
 
-        print("Columns in the DataFrame:", df.columns)
-        print("First few rows of data:", df.head())
+        print(count_central)
         df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
         df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
         df = df.dropna(subset=['latitude', 'longitude', 'region', 'country', 'Group', 'target'])
 
         if filter_value:
+            if filter_by not in df.columns:
+                raise ValueError(f"Filter column '{filter_by}' not found in data.")
             df = df[df[filter_by] == filter_value]
+            if df.empty:
+                raise ValueError(f"No data found for filter value: {filter_value}")
 
         grouped = df.groupby([filter_by, 'target']).agg({
             'Group': lambda x: list(set(x)),
@@ -381,13 +348,13 @@ def get_groups_with_common_targets(filter_by='region', filter_value=None):
             ).add_to(marker_cluster)
 
         folium_map.save('common_targets_map.html')
-        return {
-            "status": "success",
-            "data": grouped.to_dict(orient='records'),
-            "top_targets": top_targets.to_dict(orient='records')
-        }
+
+        map_html = folium_map._repr_html_()
+        results = top_targets.to_dict(orient='records')
+        return {"status": "success", "data": results, "map_html": map_html}
 
     except Exception as e:
+        logging.error(f"Error in get_groups_with_common_targets: {str(e)}")
         return {"status": "error", "message": str(e)}
 
 #   Question 12: ???
@@ -408,7 +375,7 @@ def track_group_expansion_over_time():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# 13???
+# 13
 def find_groups_in_same_attack():
     try:
         df = upload_to_pandas(terrorism_actions)
@@ -437,6 +404,10 @@ def find_groups_in_same_attack():
 #   2: Question 14:
 def find_shared_attack_strategies(region_filter=None, country_filter=None):
     try:
+        if region_filter:
+            region_filter = clean_filter_value(region_filter)
+        if country_filter:
+            country_filter = clean_filter_value(country_filter)
         df = upload_to_pandas(terrorism_actions)
 
         df = df.dropna(subset=['region', 'country', 'AttackType', 'Group', 'latitude', 'longitude'])
@@ -456,7 +427,6 @@ def find_shared_attack_strategies(region_filter=None, country_filter=None):
             group_names=('Group', lambda x: list(x.unique()))
         ).reset_index()
 
-        # בחירת האזור עם מספר הקבוצות הייחודיות הגבוה ביותר לכל סוג תקיפה
         top_attack_by_region = attack_group_count.loc[
             attack_group_count.groupby(['region', 'country', 'AttackType'])['unique_groups'].idxmax()
         ]
@@ -478,8 +448,14 @@ def find_shared_attack_strategies(region_filter=None, country_filter=None):
 
         folium_map.save('shared_attack_strategies_map.html')
         result = top_attack_by_region.to_dict(orient='records')
+        user_agent = request.headers.get('User-Agent', '').lower()
+        accept_header = request.headers.get('Accept', '')
 
-        return {"status": "success", "data": result}
+        if "postman" in user_agent or "application/json" in accept_header:
+            return {"status": "success", "data": result}
+        else:
+            return send_file('shared_attack_strategies_map.html')
+        # return {"status": "success", "data": result}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -487,7 +463,6 @@ def find_shared_attack_strategies(region_filter=None, country_filter=None):
 def find_groups_and_attack_count_by_target(region_filter=None, country_filter=None):
     try:
         df = upload_to_pandas(terrorism_actions)
-
         df = df.dropna(subset=['region', 'country', 'AttackType', 'Group', 'target_type'])
 
         if region_filter:
@@ -495,18 +470,20 @@ def find_groups_and_attack_count_by_target(region_filter=None, country_filter=No
         if country_filter:
             df = df[df['country'] == country_filter]
 
-        attack_group_count = df.groupby(['target_type', 'Group'])['eventid'].count().reset_index(name='attack_count')
-
-        result = attack_group_count[['target_type', 'Group', 'attack_count']].to_dict(orient='records')
+        attack_group_count = df.groupby(['region', 'country', 'target_type', 'Group'])['eventid'].count().reset_index(name='attack_count')
+        result = attack_group_count[['region', 'country', 'target_type', 'Group', 'attack_count']].to_dict(orient='records')
 
         return {"status": "success", "data": result}
-
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 #  4: Question 16:
 def find_areas_with_high_intergroup_activity(region_filter=None, country_filter=None):
     try:
+        if region_filter:
+            region_filter = clean_filter_value(region_filter)
+        if country_filter:
+            country_filter = clean_filter_value(country_filter)
         df = upload_to_pandas(terrorism_actions)
 
         df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
@@ -537,14 +514,23 @@ def find_areas_with_high_intergroup_activity(region_filter=None, country_filter=
 
         folium_map.save('areas_with_high_intergroup_activity_map.html')
         result = top_activity_regions[['region', 'country', 'unique_groups_count']].to_dict(orient='records')
-        return {"status": "success", "data": result}
+        user_agent = request.headers.get('User-Agent', '').lower()
+        accept_header = request.headers.get('Accept', '')
 
+        if "postman" in user_agent or "application/json" in accept_header:
+            return {"status": "success", "data": result}
+        else:
+            return send_file('areas_with_high_intergroup_activity_map.html')
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 # 5: Question 18:
 def find_influential_groups(region_filter=None, country_filter=None):
     try:
+        if region_filter:
+            region_filter = clean_filter_value(region_filter)
+        if country_filter:
+            country_filter = clean_filter_value(country_filter)
         df = upload_to_pandas(terrorism_actions)
 
         df = df.dropna(subset=['region', 'country', 'target_type', 'Group', 'latitude', 'longitude'])
@@ -563,7 +549,9 @@ def find_influential_groups(region_filter=None, country_filter=None):
             unique_regions=('region', 'nunique'),
             unique_targets=('target_type', 'nunique'),
             latitude=('latitude', 'mean'),
-            longitude=('longitude', 'mean')
+            longitude=('longitude', 'mean'),
+            country=('country', 'first'),
+            region=('region', 'first')
         ).reset_index()
 
         influence_data['influence_score'] = influence_data['unique_regions'] + influence_data['unique_targets']
@@ -575,22 +563,28 @@ def find_influential_groups(region_filter=None, country_filter=None):
         for _, row in top_influential.iterrows():
             folium.Marker(
                 location=[row['latitude'], row['longitude']],
-                popup=(
-                    f"Group: {row['Group']}<br>"
-                    f"Unique Regions: {row['unique_regions']}<br>"
-                    f"Unique Targets: {row['unique_targets']}<br>"
-                    f"Influence Score: {row['influence_score']}"
-                ),
+                popup=(f"Group: {row['Group']}<br>"
+                       f"Unique Regions: {row['unique_regions']}<br>"
+                       f"Unique Targets: {row['unique_targets']}<br>"
+                       f"Influence Score: {row['influence_score']}<br>"
+                       f"Region: {row['region']}<br>"
+                       f"Country: {row['country']}"),
                 icon=folium.Icon(color="red", icon="info-sign")
             ).add_to(folium_map)
 
         folium_map.save('influential_groups_map.html')
-        result = top_influential.to_dict(orient='records')
 
-        return {"status": "success", "data": result}
+        user_agent = request.headers.get('User-Agent', '').lower()
+        accept_header = request.headers.get('Accept', '')
+
+        if "postman" in user_agent or "application/json" in accept_header:
+            result = top_influential.to_dict(orient='records')
+            return {"status": "success", "data": result}
+        else:
+            return send_file('influential_groups_map.html')
+
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
 
 #   5: Question 19:
 def find_groups_with_shared_targets_by_year():

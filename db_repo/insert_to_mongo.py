@@ -20,7 +20,7 @@ def create_terror_actions_collection(df):
    print('table dropped successfully')
    terror_list = []
 
-   for row in read_csv(DATA_PATH):
+   for row in read_csv(f'.{DATA_PATH}'):
 
        new_terror = {
            'eventid': row.get('eventid', None),
