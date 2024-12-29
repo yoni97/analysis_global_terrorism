@@ -48,22 +48,7 @@ This project integrates Flask for the API layer, Pandas for data processing, and
 - **Containerization:** Docker, Docker Compose
 
 ---
-
-## **Project Structure**
-
-```
-project/
-|-- app/
-|   |-- routes/
-|   |   |-- analyze.py       # Handles data analysis endpoints
-|   |   |-- visualization.py # Map and graph generation
-|   |-- models/
-|   |   |-- database.py      # Database connection and ORM models
-|   |-- utils/
-|       |-- helpers.py       # Utility functions for data cleaning
-|-- docker-compose.yml       # Multi-container setup
-|-- requirements.txt         # Python dependencies
-|-- README.md                # Project documentation
+ README.md                # Project documentation
 ```
 
 ---
